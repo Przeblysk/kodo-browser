@@ -5,17 +5,33 @@ import {Domain} from "kodo-s3-adapter-sdk/dist/adapter";
 import Duration from "@common/const/duration";
 import {BackendMode} from "@common/qiniu";
 
+import * as customize from "@renderer/customize";
+import * as DefaultDict from "@renderer/modules/default-dict";
 import * as LocalLogger from "@renderer/modules/local-logger";
 import {AkItem, EndpointType} from "@renderer/modules/auth";
 import {listDomains} from "@renderer/modules/qiniu-client";
+import {useKodoNavigator} from "@renderer/modules/kodo-address";
+import {isExternalPathItem} from "@renderer/modules/user-config-store";
 
-const S3_LINK_MAX_LIFETIME = 1 * Duration.Day;
+const PUB_S3_LINK_MAX_LIFETIME = 1 * Duration.Day;
 const PVT_S3_LINK_MAX_LIFETIME = 7 * Duration.Day;
+const CUS_S3_LINK_MAX_LIFETIME = 365 * Duration.Day;
 const KODO_LINK_MAX_LIFETIME = 365 * Duration.Day;
+
+function getDisableNonOwnedDomain(): boolean {
+  let result = customize.disable.nonOwnedDomain;
+  if (result) {
+    return result;
+  }
+  const defaultVal = DefaultDict.get("DISABLE_NON_OWNED_DOMAIN");
+  if (defaultVal !== undefined) {
+    result = defaultVal;
+  }
+  return result;
+}
 
 // for kodo domain and s3 domain
 export interface DomainAdapter extends Domain {
-  backendMode: BackendMode,
   linkMaxLifetime: number, // ms
 }
 
@@ -24,9 +40,9 @@ export const NON_OWNED_DOMAIN: DomainAdapter = {
   protocol: "",
   private: true,
   protected: false,
-  type: "normal",
-  backendMode: BackendMode.S3,
-  linkMaxLifetime: S3_LINK_MAX_LIFETIME,
+  type: 'others',
+  apiScope: "s3",
+  linkMaxLifetime: PUB_S3_LINK_MAX_LIFETIME,
 };
 
 interface LoadDomainsState {
@@ -39,7 +55,7 @@ interface useLoadDomainsProps {
   regionId?: string,
   bucketName?: string,
   shouldAutoReload?: () => boolean,
-  canS3Domain: boolean,
+  canDefaultS3Domain: boolean,
   preferBackendMode?: BackendMode,
 }
 
@@ -48,11 +64,23 @@ export default function useLoadDomains({
   regionId,
   bucketName,
   shouldAutoReload,
-  canS3Domain,
+  canDefaultS3Domain,
   preferBackendMode,
 }: useLoadDomainsProps) {
+  const {currentAddress} = useKodoNavigator();
+
   async function loadDomains() {
     if (!user) {
+      return;
+    }
+
+    if (user.endpointType === EndpointType.ShareSession) {
+      setLoadDomainsState({
+        loading: false,
+        domains: [{
+          ...NON_OWNED_DOMAIN,
+        }],
+      });
       return;
     }
 
@@ -66,6 +94,16 @@ export default function useLoadDomains({
       return;
     }
 
+    if (isExternalPathItem(currentAddress)) {
+      setLoadDomainsState({
+        loading: false,
+        domains: [
+          {...NON_OWNED_DOMAIN},
+        ],
+      });
+      return;
+    }
+
     setLoadDomainsState(v => ({
       ...v,
       loading: true,
@@ -74,18 +112,19 @@ export default function useLoadDomains({
     const opt = {
       id: user.accessKey,
       secret: user.accessSecret,
-      isPublicCloud: user.endpointType === EndpointType.Public,
+      endpointType: user.endpointType,
       preferKodoAdapter: preferBackendMode === BackendMode.Kodo,
       preferS3Adapter: preferBackendMode === BackendMode.S3,
     };
     const domains: DomainAdapter[] = (await listDomains(regionId, bucketName, opt))
       .map(d => ({
         ...d,
-        backendMode: BackendMode.Kodo,
-        linkMaxLifetime: KODO_LINK_MAX_LIFETIME,
+        linkMaxLifetime: d.apiScope === "kodo"
+          ? KODO_LINK_MAX_LIFETIME
+          : CUS_S3_LINK_MAX_LIFETIME,
       }));
 
-    if (canS3Domain || preferBackendMode === BackendMode.S3) {
+    if (canDefaultS3Domain && !getDisableNonOwnedDomain()) {
       const s3Domain = {
         ...NON_OWNED_DOMAIN,
       };

@@ -57,7 +57,7 @@ const SignInForm: React.FC<SignInFormProps> = ({
       isSubmitting,
     },
   } = useForm<SignInFormValues>({
-    mode: "onBlur",
+    mode: "onSubmit",
     defaultValues: defaultValues,
   });
 
@@ -89,7 +89,7 @@ const SignInForm: React.FC<SignInFormProps> = ({
                 className="d-flex justify-content-center align-items-center"
               >
                 <Button
-                  variant={isInvalidPrivateEndpointSetting ? "btn-lite-danger" : "link"}
+                  variant={isInvalidPrivateEndpointSetting ? "lite-danger" : "link"}
                   className={classNames("private-endpoint-setting", {
                     "invalid-text": isInvalidPrivateEndpointSetting,
                   })}

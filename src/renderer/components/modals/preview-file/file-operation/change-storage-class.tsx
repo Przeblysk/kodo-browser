@@ -7,7 +7,7 @@ import StorageClass from "@common/models/storage-class";
 import {BackendMode} from "@common/qiniu";
 
 import {useI18n} from "@renderer/modules/i18n";
-import {EndpointType, useAuth} from "@renderer/modules/auth";
+import {useAuth} from "@renderer/modules/auth";
 import {FileItem, setStorageClass} from "@renderer/modules/qiniu-client";
 import {useFileOperation} from "@renderer/modules/file-operation";
 import {useHeadFile} from "@renderer/modules/qiniu-client-hooks";
@@ -62,11 +62,12 @@ const ChangeStorageClass: React.FC<ChangeStorageClassProps> = ({
   const changeStorageClassFormController = useForm<ChangeStorageClassFormData>({
     mode: "onChange",
     defaultValues: {
-      storageClassKodoName: storageClasses[0]?.kodoName ?? "Standard",
+      storageClassKodoName: storageClasses[0]?.kodoName ?? "",
     },
   });
 
   const {
+    watch,
     handleSubmit,
     formState: {
       isSubmitting,
@@ -82,7 +83,7 @@ const ChangeStorageClass: React.FC<ChangeStorageClassProps> = ({
     const opt = {
       id: currentUser.accessKey,
       secret: currentUser.accessSecret,
-      isPublicCloud: currentUser.endpointType === EndpointType.Public,
+      endpointType: currentUser.endpointType,
       storageClasses,
       preferKodoAdapter: preferBackendMode === BackendMode.Kodo,
       preferS3Adapter: preferBackendMode === BackendMode.S3,
@@ -123,7 +124,7 @@ const ChangeStorageClass: React.FC<ChangeStorageClassProps> = ({
         onSubmit={handleSubmitChangeStorageClass}
       />
       {
-        !SubmitButtonPortal || isSubmitSuccessful
+        !SubmitButtonPortal || !watch("storageClassKodoName") || isSubmitSuccessful
           ? null
           : <SubmitButtonPortal>
             <Button

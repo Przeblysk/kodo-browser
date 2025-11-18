@@ -6,6 +6,7 @@ const dict: Dictionary = {
     empty: "Empty",
     ok: "OK",
     cancel: "Cancel",
+    all: "All",
     close: "Close",
     save: "Save",
     saving: "Saving",
@@ -27,6 +28,14 @@ const dict: Dictionary = {
     noDomainToGet: "No domain to get object",
     errored: "An error has occurred",
     paused: "Paused",
+    custom: "custom",
+
+    second: "second",
+    seconds: "seconds",
+    minute: "minute",
+    minutes: "minutes",
+    hour: "hour",
+    hours: "hours",
 
     directory: "Directory",
     upload: "Upload",
@@ -41,9 +50,21 @@ const dict: Dictionary = {
     more: "More",
     exportLink: "Export Download Link",
     exportLinks: "Export Download Links",
+    share: "Share",
     restore: "Restore",
     changeStorageClass: "Set Storage Class",
+    unknownStorageClass: "Unknown Storage Class",
     clickToRetry: "Click to retry",
+  },
+
+  deepLinkActions: {
+    signIn: {
+      invalidParams: "Invalid URL. Lost required parameters",
+      signOutConfirm: {
+        title: "Sign Out",
+        description: "Sign Out for Signing In with Share URL",
+      },
+    },
   },
 
   top: {
@@ -72,8 +93,11 @@ const dict: Dictionary = {
   },
 
   signIn: {
-    title: "access key sign in",
+    title: "Access Key Sign In",
+    titleShareLink: "Share Link Sign In",
     accessKeyHistory: "AK History",
+    gotoShareLinkForm: "Use Share Link Sign In",
+    gotoAkForm: "Use AK Sign In",
     form: {
       accessKeyId: {
         holder: "AccessKeyId",
@@ -109,6 +133,23 @@ const dict: Dictionary = {
       },
       submit: "Sign in",
       submitting: "Signing in",
+    },
+    formShareLink: {
+      shareLink: {
+        label: "Share Link:",
+        holder: "Please input the directory share link",
+        feedback: {
+          invalidFormat: "Invalid share link format",
+          invalidPrivateFormat: "Invalid share link format. Please configure share base link if it's a share link for private cloud.",
+        },
+      },
+      extractCode: {
+        label: "Extract Code:",
+        holder: "Alphabet and digits only",
+        feedback: {
+          invalidFormat: "Must contain only alphabet or digits and length must be 6"
+        },
+      },
     },
   },
 
@@ -161,6 +202,11 @@ const dict: Dictionary = {
         nonOwnedDomain: "Non-owned domain",
         refreshTooltip: "Refresh",
       },
+      selectPrefix: {
+        select: "Selects all in the current path, including unloaded items.",
+        selected: "Selected all, including unloaded items.",
+        clear: "Clear select",
+      },
     },
     fileTable: {
       fileName: "Name",
@@ -200,6 +246,7 @@ const dict: Dictionary = {
       removeConfirmOk: "Remove",
       unknownError: "unknown error",
       fileDuplicated: "File duplicated",
+      accelerateUploading: "Accelerate uploading",
     },
     upload: {
       dropZone: {
@@ -212,6 +259,7 @@ const dict: Dictionary = {
       hint: {
         addingJobs: "Adding to upload queue…",
         addedJobs: "All files have been added to the upload queue",
+        addedJobsErrored: "Some files haven't add to the upload queue by access errored",
       },
       error: {
         nothing: "No files were found to upload",
@@ -219,7 +267,7 @@ const dict: Dictionary = {
       },
       toolbar: {
         search: {
-          holder: "Filter by name or status",
+          holder: "Filter by name",
         },
         emptyDirectorySwitch: "Allow uploading empty folder",
         startAllButton: "Start All",
@@ -243,7 +291,7 @@ const dict: Dictionary = {
       },
       toolbar: {
         search: {
-          holder: "Filter by name or status",
+          holder: "Filter by name",
         },
         overwriteSwitch: "Overwrite download",
         startAllButton: "Start All",
@@ -275,11 +323,15 @@ const dict: Dictionary = {
       fileName: {
         label: "File Name:",
       },
+      domainType: {
+        cdn: "CDN",
+        origin: "Origin",
+      },
       domainName: {
         label: "Domain Name:",
         nonOwnedDomain: "Non-owned domain name",
         feedback: {
-          emptyFileNameByS3Hint: "Can't export download link of a file with empty name by non-owned domain.",
+          emptyFileNameByS3Hint: "Can't export download link of a file with empty name by s3 domain.",
         },
       },
       expireAfter: {
@@ -390,11 +442,15 @@ const dict: Dictionary = {
           },
           multipartUploadPartSize: {
             label: "Multipart upload part size:",
-            hint: "Unit: MB, Range: 8 MB - 100 MB",
+            hint: "Unit: MB, Range: ${min} MB - ${max} MB",
+          },
+          multipartUploadConcurrency: {
+            label: "Multipart upload Concurrency:",
+            hint: "Range: ${min}-${max}",
           },
           maxUploadConcurrency: {
             label: "Maximum number of upload tasks:",
-            hint: "Range: 1-10",
+            hint: "Range: ${min}-${max}",
           },
           enabledUploadSpeedLimit: {
             label: "Upload speed limit:",
@@ -423,7 +479,7 @@ const dict: Dictionary = {
           },
           maxDownloadConcurrency: {
             label: "Maximum number of download tasks:",
-            hint: "Range: 1-10",
+            hint: "Range: ${min}-${max}",
           },
           enabledDownloadSpeedLimit: {
             label: "Download speed limit:",
@@ -598,7 +654,7 @@ const dict: Dictionary = {
         },
         fileName: {
           label: "Rename:",
-          hint: "Cannot start or end with / ,  and there cannot be consecutive / in between",
+          hint: "Cannot start or end with / ,  and there cannot be consecutive / in between; Cannot be the same as original path",
         },
       },
       replaceConfirm: {
@@ -610,16 +666,18 @@ const dict: Dictionary = {
     deleteFiles: {
       title: "Delete Files",
       description: "Delete the following files or directories:",
+      prefixDescription: "Delete the following files with prefixes:",
     },
 
     copyFiles: {
       title: "Copy Files",
       hintFiltered: "Copy directory to itself or empty name file is forbidden. The list is filtered.",
       description: "${operation} the following files or directories to current directory(The same name file or directory will be replaced):",
+      prefixDescription: "${operation} the following files with prefixes to current directory(The same name file or directory will be replaced):",
       form: {
         fileName: {
           label: "Duplicate Name:",
-          hint: "Cannot start or end with / , and there cannot be consecutive / in between"
+          hint: "Cannot start or end with / , and there cannot be consecutive / in between; Cannot be the same as original path"
         },
       },
       replaceConfirm: {
@@ -632,6 +690,7 @@ const dict: Dictionary = {
       title: "Move Files",
       hintFiltered: "Move directory to itself or empty name file is forbidden. The list is filtered.",
       description: "${operation} the following files or directories to current directory(The same name file or directory will be replaced):",
+      prefixDescription: "${operation} the following files with prefixes to current directory(The same name file or directory will be replaced):",
       form: {
         fileName: {
           label: "New Name:",
@@ -647,6 +706,7 @@ const dict: Dictionary = {
     changeFilesStorageClass: {
       title: "Set Storage Class",
       description: "Set the storage class of the following files or directories:",
+      prefixDescription: "Set the storage class of the following files with prefixes:",
     },
 
     changeFileStorageClass: {
@@ -656,6 +716,7 @@ const dict: Dictionary = {
     restoreFiles: {
       title: "Restore Files",
       description: "Restore the following files or directories:",
+      prefixDescription: "Restore the following files with prefixes:",
     },
 
     restoreFile: {
@@ -665,6 +726,7 @@ const dict: Dictionary = {
     generateFileLinks: {
       title: "Export Download Links",
       description: "Export download links of the following files:",
+      prefixDescription: "Export download links of the following files with prefixes:",
       hintFiltered: "Can't export download link of a file with empty name, filtered.",
       csvFile: {
         label: "Export file location:",
@@ -682,6 +744,41 @@ const dict: Dictionary = {
       title: "Export Download Link",
     },
 
+    createDirectoryShareLink: {
+      title: "Share Directory",
+      form: {
+        directoryName: {
+          label: "Directory:",
+        },
+        expireAfter: {
+          label: "Validity Period:",
+          suffix: "seconds",
+          hint: "Range: ${minSeconds} - ${maxSeconds} seconds"
+        },
+        extractCode: {
+          label: "Extraction Code:",
+          suffix: "Random",
+          hint: "Must be 6 characters long and can only consist of alphanumeric characters",
+        },
+        shareLink: {
+          label: "Share Link:",
+        },
+        expiredAt: {
+          label: "Valid Until:",
+        },
+      },
+      copyShareMessageButton: "Copy Share Message",
+      copyShareMessageSuccess: "Copied",
+      shareMessage: [
+        "I've shared some files with you, take a look!",
+        "",
+        "${shareLink}",
+        "",
+        "Extraction Code: ${extractCode}",
+        "Valid until: ${expiredAt}"
+      ].join("\n"),
+    },
+
     uploadConfirm: {
       title: "Upload Files",
       previewList: {
@@ -693,10 +790,20 @@ const dict: Dictionary = {
           label: "Overwrite:",
           hint: "(Only this time)",
         },
+        accelerateUploading: {
+          label: "Accelerate Uploading:",
+          hint: "(Only this time)",
+          hintSecondary: "Will prioritize using accelerate domain for upload, which will incur corresponding traffic costs.",
+        },
         storageClassKodoName: {
           label: "Storage Class:",
         },
       },
+      popupHint: {
+        question: "Already enabled accelerate uploading for this bucket, but not see the switch?",
+        clickHere: "Click here",
+        refreshIt: " refresh it."
+      }
     },
 
     preview: {
@@ -724,7 +831,7 @@ const dict: Dictionary = {
         }
       },
       error: {
-        emptyFileNameByS3Hint: "Can't preview a file with empty name by non-owned domain",
+        emptyFileNameByS3Hint: "Can't preview a file with empty name by S3 domain",
         failedGenerateLink: "Failed to get preview link",
         failedGetContent: "Failed to get file contents",
         contentNotChanged: "The content is not modified",

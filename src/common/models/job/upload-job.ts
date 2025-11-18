@@ -27,8 +27,10 @@ interface RequiredOptions {
 }
 
 interface UploadOptions {
+    accelerateUploading: boolean,
     multipartUploadThreshold: number, // Bytes
     multipartUploadSize: number, // Bytes
+    multipartUploadConcurrency: number,
     uploadSpeedLimit: number, // Bytes/s
 
     isDebug: boolean,
@@ -64,8 +66,10 @@ export type Options = RequiredOptions & Partial<OptionalOptions>
 const DEFAULT_OPTIONS: OptionalOptions = {
     id: "",
 
+    accelerateUploading: false,
     multipartUploadThreshold: 10 * ByteSize.MB,
     multipartUploadSize: 4 * ByteSize.MB,
+    multipartUploadConcurrency: 1,
     uploadSpeedLimit: 0, // 0 means no limit
     uploadedId: "",
     uploadedParts: [],
@@ -98,16 +102,12 @@ type PersistInfo = {
     // But It's also a risk, if business logic changes. Because we may get errors
     // when restart job from break point with different backendMode.
     backendMode: RequiredOptions["clientOptions"]["backendMode"],
+    accelerateUploading: OptionalOptions["accelerateUploading"],
     prog: OptionalOptions["prog"],
-    status: OptionalOptions["status"],
+    status: Exclude<OptionalOptions["status"], Status.Waiting | Status.Running>,
     message: OptionalOptions["message"],
     uploadedId: OptionalOptions["uploadedId"],
-    // ugly. if we can do some break changes, make it be
-    // `uploadedParts: OptionalOptions["uploadedParts"],`
-    uploadedParts: {
-        PartNumber: UploadedPart["partNumber"],
-        ETag: UploadedPart["etag"],
-    }[],
+    uploadedParts: OptionalOptions["uploadedParts"],
     multipartUploadThreshold: OptionalOptions["multipartUploadThreshold"],
     multipartUploadSize: OptionalOptions["multipartUploadSize"],
 }
@@ -118,6 +118,7 @@ export default class UploadJob extends TransferJob {
         persistInfo: PersistInfo,
         clientOptions: RequiredOptions["clientOptions"],
         uploadOptions: {
+            multipartConcurrency: number,
             uploadSpeedLimit: number,
             isDebug: boolean,
             userNatureLanguage: NatureLanguage,
@@ -139,6 +140,7 @@ export default class UploadJob extends TransferJob {
             prog: persistInfo.prog,
 
             clientOptions,
+            accelerateUploading: persistInfo.accelerateUploading,
             storageClasses: persistInfo.storageClasses,
 
             overwrite: persistInfo.overwrite,
@@ -146,13 +148,11 @@ export default class UploadJob extends TransferJob {
             storageClassName: persistInfo.storageClassName,
 
             uploadedId: persistInfo.uploadedId,
-            uploadedParts: persistInfo.uploadedParts.map(part => ({
-                partNumber: part.PartNumber,
-                etag: part.ETag,
-            })),
+            uploadedParts: persistInfo.uploadedParts,
 
             multipartUploadThreshold: persistInfo.multipartUploadThreshold,
             multipartUploadSize: persistInfo.multipartUploadSize,
+            multipartUploadConcurrency: uploadOptions.multipartConcurrency,
             uploadSpeedLimit: uploadOptions.uploadSpeedLimit,
             isDebug: uploadOptions.isDebug,
 
@@ -166,6 +166,9 @@ export default class UploadJob extends TransferJob {
     protected readonly options: Readonly<RequiredOptions & OptionalOptions>
     private isForceOverwrite: boolean = false
 
+    // - for accelerate uploading
+    accelerateUploading: boolean = false
+
     // - for resume from break point -
     uploadedId: string
     uploadedParts: UploadedPart[]
@@ -178,6 +181,7 @@ export default class UploadJob extends TransferJob {
 
         this.options = lodash.merge({}, DEFAULT_OPTIONS, config);
 
+        this.accelerateUploading = this.options.accelerateUploading;
         this.uploadedId = this.options.uploadedId;
         this.uploadedParts = [
             ...this.options.uploadedParts,
@@ -197,6 +201,7 @@ export default class UploadJob extends TransferJob {
             ...super.uiData,
             from: this.options.from,
             to: this.options.to,
+            accelerateUploading: this.accelerateUploading,
         };
     }
 
@@ -280,6 +285,7 @@ export default class UploadJob extends TransferJob {
                 header: {
                     contentType: mime.getType(this.options.from.path),
                 },
+                accelerateUploading: this.accelerateUploading,
                 recovered: this.uploadedId && this.uploadedParts
                     ? {
                         uploadId: this.uploadedId,
@@ -288,6 +294,7 @@ export default class UploadJob extends TransferJob {
                     : undefined,
                 uploadThreshold: this.options.multipartUploadThreshold,
                 partSize: this.options.multipartUploadSize,
+                partMaxConcurrency: this.options.multipartUploadConcurrency,
                 putCallback: {
                     partsInitCallback: this.handlePartsInit,
                     partPutCallback: this.handlePartPutted,
@@ -405,14 +412,24 @@ export default class UploadJob extends TransferJob {
     }
 
     get persistInfo(): PersistInfo {
+        let persistStatus = this.status;
+        if (persistStatus === Status.Waiting || persistStatus === Status.Running) {
+            persistStatus = Status.Stopped;
+        }
         return {
             from: this.options.from,
-            storageClasses: this.options.storageClasses,
+            // filter storage class i18n info
+            storageClasses: this.options.storageClasses.map(c => ({
+              kodoName: c.kodoName,
+              fileType: c.fileType,
+              s3Name: c.s3Name,
+            })),
             region: this.options.region,
             to: this.options.to,
             overwrite: this.options.overwrite,
             storageClassName: this.options.storageClassName,
             backendMode: this.options.clientOptions.backendMode,
+            accelerateUploading: this.options.accelerateUploading,
 
             // real-time info
             prog: {
@@ -420,12 +437,10 @@ export default class UploadJob extends TransferJob {
                 total: this.prog.total,
                 resumable: this.prog.resumable
             },
-            status: this.status,
+            status: persistStatus,
             message: this.message,
             uploadedId: this.uploadedId,
-            uploadedParts: this.uploadedParts.map((part) => {
-                return {PartNumber: part.partNumber, ETag: part.etag};
-            }),
+            uploadedParts: this.uploadedParts,
             multipartUploadThreshold: this.options.multipartUploadThreshold,
             multipartUploadSize: this.options.multipartUploadSize,
         };
@@ -475,6 +490,12 @@ export default class UploadJob extends TransferJob {
         ) {
             this.uploadedId = "";
             this.uploadedParts = [];
+        }
+        // handle accelerate uploading is not available
+        if (err.toString().includes("transfer acceleration is not configured")) {
+            this.accelerateUploading = false;
+            await this.retry();
+            return;
         }
 
         this._status = Status.Failed;

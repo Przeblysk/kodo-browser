@@ -7,7 +7,7 @@ import StorageClass from "@common/models/storage-class";
 import {BackendMode} from "@common/qiniu";
 
 import {useI18n} from "@renderer/modules/i18n";
-import {EndpointType, useAuth} from "@renderer/modules/auth";
+import {useAuth} from "@renderer/modules/auth";
 import {
   FileItem,
   setStorageClassOfFiles,
@@ -26,6 +26,7 @@ import {
 import {ChangeStorageClassForm, ChangeStorageClassFormData} from "@renderer/components/forms";
 
 import {OperationDoneRecallFn} from "../types";
+import FileList from "../common/file-list";
 
 interface ChangeFilesStorageClassProps {
   regionId: string,
@@ -86,7 +87,7 @@ const ChangeFilesStorageClass: React.FC<ModalProps & ChangeFilesStorageClassProp
   const changeStorageClassFormController = useForm<ChangeStorageClassFormData>({
     mode: "onChange",
     defaultValues: {
-      storageClassKodoName: storageClasses[0]?.kodoName ?? "Standard",
+      storageClassKodoName: storageClasses[0]?.kodoName ?? "",
     },
   });
 
@@ -105,7 +106,7 @@ const ChangeFilesStorageClass: React.FC<ModalProps & ChangeFilesStorageClassProp
     const opt = {
       id: currentUser.accessKey,
       secret: currentUser.accessSecret,
-      isPublicCloud: currentUser.endpointType === EndpointType.Public,
+      endpointType: currentUser.endpointType,
       storageClasses: memoStorageClasses,
       preferKodoAdapter: preferBackendMode === BackendMode.Kodo,
       preferS3Adapter: preferBackendMode === BackendMode.S3,
@@ -190,23 +191,20 @@ const ChangeFilesStorageClass: React.FC<ModalProps & ChangeFilesStorageClassProp
               {translate("common.noObjectSelected")}
             </div>
             : <>
-              <div className="text-danger">
-                {translate("modals.changeFilesStorageClass.description")}
-              </div>
-              <ul className="scroll-max-vh-40">
-                {
-                  memoFileItems.map(fileItem => (
-                    <li key={fileItem.path.toString()}>
-                      {
-                        FileItem.isItemFolder(fileItem)
-                          ? <i className="bi bi-folder-fill text-yellow"/>
-                          : <i className="bi bi-file-earmark"/>
-                      }
-                      <span className="ms-1 text-break-all">{fileItem.name}</span>
-                    </li>
-                  ))
+              <FileList
+                className="scroll-max-vh-40"
+                data={memoFileItems}
+                prefixDescription={
+                  <div className="text-danger">
+                    {translate("modals.changeFilesStorageClass.prefixDescription")}
+                  </div>
                 }
-              </ul>
+                description={
+                  <div>
+                    {translate("modals.changeFilesStorageClass.description")}
+                  </div>
+                }
+              />
               <ChangeStorageClassForm
                 formController={changeStorageClassFormController}
                 storageClasses={memoStorageClasses}

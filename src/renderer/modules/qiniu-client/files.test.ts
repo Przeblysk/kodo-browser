@@ -25,10 +25,12 @@ import {
   ObjectInfo,
   PartialObjectError,
   StorageClass,
-  StorageObject
+  StorageObject,
+  UrlStyle,
 } from "kodo-s3-adapter-sdk/dist/adapter";
 
 import Duration from "@common/const/duration";
+import {EndpointType} from "@renderer/modules/auth";
 
 import * as QiniuClientCommon from "./common";
 import * as QiniuClientFile from "./files";
@@ -72,12 +74,13 @@ describe("test qiniu-client/files.ts", () => {
         private: true,
         protected: false,
         protocol: "http",
-        type: "test",
+        type: "cdn",
+        apiScope: "kodo",
     };
     const mockOpt: QiniuClientCommon.GetAdapterOptionParam = {
         id: ENV.QINIU_ACCESS_KEY,
         secret: ENV.QINIU_SECRET_KEY,
-        isPublicCloud: true,
+        endpointType: EndpointType.Public,
     };
 
 
@@ -441,6 +444,7 @@ describe("test qiniu-client/files.ts", () => {
                         "bucket-kodo-browser-Kodo-getContent",
                         qiniuPathConvertor.fromQiniuPath("qiniu-client/file-to-get"),
                         mockDomain,
+                        undefined,
                         mockOpt,
                     );
                     expect(QiniuClientCommon.getDefaultClient).toBeCalledTimes(1);
@@ -453,6 +457,7 @@ describe("test qiniu-client/files.ts", () => {
                             key: "qiniu-client/file-to-get",
                         },
                         mockDomain,
+                        undefined
                     );
                     expect(actualContent).toEqual(Buffer.from("lalalala"));
                 });
@@ -605,6 +610,7 @@ describe("test qiniu-client/files.ts", () => {
                             mockDataKey,
                             undefined,
                             10,
+                            name === "S3" ? UrlStyle.Path : UrlStyle.BucketEndpoint,
                             mockOpt,
                         );
                         expect(QiniuClientCommon.getDefaultClient).toBeCalledTimes(1);
@@ -620,6 +626,7 @@ describe("test qiniu-client/files.ts", () => {
                             },
                             undefined,
                             expectDeadline,
+                            name === "S3" ? "path" : "bucketEndpoint",
                         );
                     } finally {
                         jest.useRealTimers();

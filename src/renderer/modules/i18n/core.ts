@@ -1,7 +1,9 @@
 import lodash from "lodash";
 
+import {PropsPath} from "@common/utility-types";
+
 import * as LocalLogger from "@renderer/modules/local-logger";
-import {PropsPath} from "./types";
+
 import Dictionary from "./lang/dict";
 import zhCN from "./lang/zh-cn";
 
@@ -28,8 +30,9 @@ export function getLang() {
   return currentLang;
 }
 
-export function translate(key: PropsPath<Dictionary>): string {
-  return renderWithObject(lodash.get(dictionary, key, key), dictionary);
+export function translate(key: PropsPath<Dictionary>, dict?: Record<string, string>): string {
+  const obj = dict ?? dictionary;
+  return renderWithObject(lodash.get(dictionary, key, key), obj);
 }
 
 export async function setLang(lang: LangName): Promise<void> {
@@ -64,7 +67,7 @@ function triggerLangeChange(lang: LangName, dictionary: Dictionary) {
   });
 }
 
-export function renderWithObject(str: string, obj: any) {
+function renderWithObject(str: string, obj: any) {
   return str.replace(/\$\{(\w+|\w+\.\w+)}/g, match => {
     const k = match.slice(2, -1); // remove ${}
     return lodash.get(obj, k, match);

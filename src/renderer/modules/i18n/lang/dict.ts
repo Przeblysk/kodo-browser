@@ -5,6 +5,7 @@ export default interface Dictionary {
     empty: string,
     ok: string,
     cancel: string,
+    all: string,
     close: string,
     save: string,
     saving: string,
@@ -28,6 +29,14 @@ export default interface Dictionary {
     downloading: string,
     downloaded: string,
     paused: string,
+    custom: string,
+
+    second: string,
+    seconds: string,
+    minute: string,
+    minutes: string,
+    hour: string,
+    hours: string,
 
     directory: string,
     upload: string,
@@ -40,9 +49,22 @@ export default interface Dictionary {
     more: string,
     exportLink: string,
     exportLinks: string,
+    share: string,
     restore: string,
     changeStorageClass: string,
+    unknownStorageClass: string,
     clickToRetry: string,
+  },
+
+  // deep link actions
+  deepLinkActions: {
+    signIn: {
+      invalidParams: string,
+      signOutConfirm: {
+        title: string,
+        description: string,
+      },
+    },
   },
 
   // top
@@ -75,7 +97,10 @@ export default interface Dictionary {
   // signIn
   signIn: {
     title: string,
+    titleShareLink: string,
     accessKeyHistory: string,
+    gotoShareLinkForm: string,
+    gotoAkForm: string,
     form: {
       endpoint: {
         label: string,
@@ -111,6 +136,23 @@ export default interface Dictionary {
       },
       submit: string,
       submitting: string,
+    },
+    formShareLink: {
+      shareLink: {
+        label: string,
+        holder: string,
+        feedback: {
+          invalidFormat: string,
+          invalidPrivateFormat: string,
+        },
+      },
+      extractCode: {
+        label: string,
+        holder: string,
+        feedback: {
+          invalidFormat: string,
+        },
+      },
     },
   },
 
@@ -165,6 +207,11 @@ export default interface Dictionary {
         nonOwnedDomain: string,
         refreshTooltip: string,
       },
+      selectPrefix: {
+        select: string,
+        selected: string,
+        clear: string,
+      },
     },
     fileTable: {
       fileName: string,
@@ -205,6 +252,7 @@ export default interface Dictionary {
       removeConfirmOk: string,
       unknownError: string,
       fileDuplicated: string,
+      accelerateUploading: string,
     },
     upload: {
       dropZone: {
@@ -217,6 +265,7 @@ export default interface Dictionary {
       hint: {
         addingJobs: string,
         addedJobs: string,
+        addedJobsErrored: string,
       },
       error: {
         nothing: string,
@@ -280,6 +329,10 @@ export default interface Dictionary {
     generateLink: {
       fileName: {
         label: string,
+      },
+      domainType: {
+        cdn: string,
+        origin: string
       },
       domainName: {
         label: string,
@@ -393,6 +446,10 @@ export default interface Dictionary {
             hint: string,
           },
           multipartUploadPartSize: {
+            label: string,
+            hint: string,
+          },
+          multipartUploadConcurrency: {
             label: string,
             hint: string,
           },
@@ -611,12 +668,14 @@ export default interface Dictionary {
     deleteFiles: {
       title: string,
       description: string,
+      prefixDescription: string,
     },
 
     copyFiles: {
       title: string,
       hintFiltered: string,
       description: string,
+      prefixDescription: string,
       form: {
         fileName: {
           label: string,
@@ -633,6 +692,7 @@ export default interface Dictionary {
       title: string,
       hintFiltered: string,
       description: string,
+      prefixDescription: string,
       form: {
         fileName: {
           label: string,
@@ -648,6 +708,7 @@ export default interface Dictionary {
     changeFilesStorageClass: {
       title: string,
       description: string,
+      prefixDescription: string,
     },
 
     changeFileStorageClass: {
@@ -657,6 +718,7 @@ export default interface Dictionary {
     restoreFiles: {
       title: string,
       description: string,
+      prefixDescription: string,
     },
 
     restoreFile: {
@@ -666,6 +728,7 @@ export default interface Dictionary {
     generateFileLinks: {
       title: string,
       description: string,
+      prefixDescription: string,
       hintFiltered: string,
       csvFile: {
         label: string,
@@ -683,6 +746,34 @@ export default interface Dictionary {
       title: string,
     },
 
+    createDirectoryShareLink: {
+      title: string,
+      form: {
+        directoryName: {
+          label: string,
+        },
+        expireAfter: {
+          label: string,
+          suffix: string,
+          hint: string,
+        },
+        extractCode: {
+          label: string,
+          suffix: string,
+          hint: string,
+        },
+        shareLink: {
+          label: string,
+        },
+        expiredAt: {
+          label: string,
+        },
+      },
+      copyShareMessageButton: string,
+      copyShareMessageSuccess: string,
+      shareMessage: string,
+    }
+
     uploadConfirm: {
       title: string,
       previewList: {
@@ -694,10 +785,20 @@ export default interface Dictionary {
           label: string,
           hint: string,
         },
+        accelerateUploading: {
+          label: string,
+          hint: string,
+          hintSecondary: string,
+        },
         storageClassKodoName: {
           label: string,
         },
       },
+      popupHint: {
+        question: string,
+        clickHere: string,
+        refreshIt: string,
+      }
     },
 
     preview: {
