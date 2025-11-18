@@ -4,8 +4,8 @@ import lodash from "lodash";
 
 import {BackendMode} from "@common/qiniu"
 
-import {EndpointType, useAuth} from "@renderer/modules/auth";
-import {FileItem, signatureUrl} from "@renderer/modules/qiniu-client";
+import {useAuth} from "@renderer/modules/auth";
+import {FileItem, getStyleForSignature, signatureUrl} from "@renderer/modules/qiniu-client";
 import {DomainAdapter, NON_OWNED_DOMAIN, useLoadDomains} from "@renderer/modules/qiniu-client-hooks";
 import {useFileOperation} from "@renderer/modules/file-operation";
 
@@ -46,7 +46,7 @@ const GenerateLink: React.FC<GenerateLinkProps> =({
     user: currentUser,
     regionId,
     bucketName,
-    canS3Domain,
+    canDefaultS3Domain: canS3Domain,
     preferBackendMode,
   });
 
@@ -69,7 +69,7 @@ const GenerateLink: React.FC<GenerateLinkProps> =({
   // state when generate succeed
   const [fileLink, setFileLink] = useState("");
 
-  const handleSubmitGenerateFileLink: SubmitHandler<GenerateLinkFormData> = (data) => {
+  const handleSubmitGenerateFileLink: SubmitHandler<GenerateLinkFormData> = useCallback(data => {
     if (!fileItem || !currentUser) {
       return;
     }
@@ -77,29 +77,36 @@ const GenerateLink: React.FC<GenerateLinkProps> =({
     const opt = {
       id: currentUser.accessKey,
       secret: currentUser.accessSecret,
-      isPublicCloud: currentUser.endpointType === EndpointType.Public,
+      endpointType: currentUser.endpointType,
       preferKodoAdapter: preferBackendMode === BackendMode.Kodo,
       preferS3Adapter:
         preferBackendMode === BackendMode.S3 ||
-        data.domain?.backendMode === BackendMode.S3,
+        data.domain?.apiScope === BackendMode.S3,
     };
 
-    const domain = data.domain?.name === NON_OWNED_DOMAIN.name
+    const apiDomain = data.domain?.name === NON_OWNED_DOMAIN.name
       ? undefined
       : data.domain;
+
+    const style = getStyleForSignature({
+      domain: apiDomain,
+      preferBackendMode,
+      currentEndpointType: currentUser.endpointType,
+    });
 
     return signatureUrl(
       regionId,
       bucketName,
       fileItem.path.toString(),
-      domain,
+      apiDomain,
       data.expireAfter,
+      style,
       opt,
     )
       .then(fileUrl => {
         setFileLink(fileUrl.toString());
       });
-  };
+  }, [currentUser, regionId, bucketName, fileItem, setFileLink]);
   const generateFileLinkDebounced = useCallback(lodash.debounce(() => {
     handleSubmit(handleSubmitGenerateFileLink)();
   }, 500), [handleSubmit, handleSubmitGenerateFileLink]);

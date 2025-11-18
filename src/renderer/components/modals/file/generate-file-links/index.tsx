@@ -15,8 +15,8 @@ import {BackendMode} from "@common/qiniu"
 
 import usePortal from "@renderer/modules/hooks/use-portal";
 import {useI18n} from "@renderer/modules/i18n";
-import {EndpointType, useAuth} from "@renderer/modules/auth";
-import {FileItem, signatureUrls} from "@renderer/modules/qiniu-client";
+import {useAuth} from "@renderer/modules/auth";
+import {FileItem, getStyleForSignature, signatureUrls} from "@renderer/modules/qiniu-client";
 import {DomainAdapter, NON_OWNED_DOMAIN, useLoadDomains} from "@renderer/modules/qiniu-client-hooks";
 import {useFileOperation} from "@renderer/modules/file-operation";
 
@@ -35,6 +35,7 @@ import {
   DomainNameField,
   ExpireAfterField,
 } from "@renderer/components/forms/generate-link-form";
+import FileList from "../common/file-list";
 
 interface GenerateFileLinksProps {
   regionId: string,
@@ -101,7 +102,7 @@ const GenerateFileLinks: React.FC<ModalProps & GenerateFileLinksProps> = (props)
     user: currentUser,
     regionId: memoRegionId,
     bucketName: memoBucketName,
-    canS3Domain: memoCanS3Domain,
+    canDefaultS3Domain: memoCanS3Domain,
     preferBackendMode,
   });
 
@@ -159,21 +160,31 @@ const GenerateFileLinks: React.FC<ModalProps & GenerateFileLinksProps> = (props)
     const opt = {
       id: currentUser.accessKey,
       secret: currentUser.accessSecret,
-      isPublicCloud: currentUser.endpointType === EndpointType.Public,
+      endpointType: currentUser.endpointType,
       storageClasses: memoStorageClasses,
       preferKodoAdapter: preferBackendMode === BackendMode.Kodo,
       preferS3Adapter:
         preferBackendMode === BackendMode.S3 ||
-        domain?.backendMode === BackendMode.S3,
+        domain?.apiScope === BackendMode.S3,
     };
+
+    const apiDomain = domain?.name === NON_OWNED_DOMAIN.name
+        ? undefined
+        : domain;
+
+    const style = getStyleForSignature({
+      domain: apiDomain,
+      preferBackendMode,
+      currentEndpointType: currentUser.endpointType,
+    });
+
     return signatureUrls(
       memoRegionId,
       memoBucketName,
       memoFileItems,
-      domain?.name === NON_OWNED_DOMAIN.name
-        ? undefined
-        : domain,
+      apiDomain,
       expireAfter,
+      style,
       (progress) => {
         setBatchProgressState({
           total: progress.total,
@@ -280,23 +291,20 @@ const GenerateFileLinks: React.FC<ModalProps & GenerateFileLinksProps> = (props)
                 {translate("common.noObjectSelected")}
               </div>
               : <>
-                <div className="text-danger">
-                  {translate("modals.generateFileLinks.description")}
-                </div>
-                <ul className="scroll-max-vh-40">
-                  {
-                    memoFileItems.map(fileItem => (
-                      <li key={fileItem.path.toString()}>
-                        {
-                          FileItem.isItemFolder(fileItem)
-                            ? <i className="bi bi-folder-fill me-1 text-yellow"/>
-                            : <i className="bi bi-file-earmark me-1"/>
-                        }
-                        {fileItem.name}
-                      </li>
-                    ))
+                <FileList
+                  className="scroll-max-vh-40"
+                  data={memoFileItems}
+                  prefixDescription={
+                    <div className="text-danger">
+                      {translate("modals.generateFileLinks.prefixDescription")}
+                    </div>
                   }
-                </ul>
+                  description={
+                    <div>
+                      {translate("modals.generateFileLinks.description")}
+                    </div>
+                  }
+                />
                 <GenerateLinkForm
                   onSubmit={handleSubmit(handleSubmitGenerateFileLinks)}
                   isValid={isValid}

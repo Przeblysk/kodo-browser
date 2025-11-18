@@ -7,7 +7,7 @@ import StorageClass from "@common/models/storage-class";
 import {BackendMode} from "@common/qiniu";
 
 import {useI18n} from "@renderer/modules/i18n";
-import {EndpointType, useAuth} from "@renderer/modules/auth";
+import {useAuth} from "@renderer/modules/auth";
 import {FileItem, setStorageClass} from "@renderer/modules/qiniu-client";
 import {useFileOperation} from "@renderer/modules/file-operation";
 
@@ -58,11 +58,12 @@ const ChangeFileStorageClass: React.FC<ModalProps & ChangeFileStorageClassProps>
   const changeStorageClassFormController = useForm<ChangeStorageClassFormData>({
     mode: "onChange",
     defaultValues: {
-      storageClassKodoName: storageClasses[0]?.kodoName ?? "Standard",
+      storageClassKodoName: storageClasses[0]?.kodoName ?? "",
     },
   });
 
   const {
+    watch,
     handleSubmit,
     formState: {
       isSubmitting,
@@ -78,7 +79,7 @@ const ChangeFileStorageClass: React.FC<ModalProps & ChangeFileStorageClassProps>
     const opt = {
       id: currentUser.accessKey,
       secret: currentUser.accessSecret,
-      isPublicCloud: currentUser.endpointType === EndpointType.Public,
+      endpointType: currentUser.endpointType,
       storageClasses: memoStorageClasses,
       preferKodoAdapter: preferBackendMode === BackendMode.Kodo,
       preferS3Adapter: preferBackendMode === BackendMode.S3,
@@ -135,7 +136,7 @@ const ChangeFileStorageClass: React.FC<ModalProps & ChangeFileStorageClassProps>
       </Modal.Body>
       <Modal.Footer>
         {
-          !memoFileItem || isSubmitSuccessful
+          !memoFileItem || !watch("storageClassKodoName") || isSubmitSuccessful
             ? null
             : <Button
               variant="primary"

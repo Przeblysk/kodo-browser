@@ -1,7 +1,20 @@
 import * as qiniuPathConvertor from "qiniu-path/dist/src/convert";
 import { Path as QiniuPath } from "qiniu-path/dist/src/path";
-import { Adapter, Domain, FrozenInfo, ObjectInfo, PartialObjectError, StorageClass, TransferObject } from 'kodo-s3-adapter-sdk/dist/adapter'
+import {
+  Adapter,
+  Domain,
+  FrozenInfo,
+  ObjectInfo,
+  PartialObjectError,
+  StorageClass,
+  TransferObject,
+  UrlStyle,
+} from 'kodo-s3-adapter-sdk/dist/adapter'
+
+import {BackendMode} from "@common/qiniu";
 import Duration from "@common/const/duration";
+
+import {EndpointType} from "@renderer/modules/auth";
 
 import * as FileItem from "./file-item";
 
@@ -209,6 +222,7 @@ export async function getContent(
     bucket: string,
     key: QiniuPath | string,
     domain: Domain | undefined,
+    style: UrlStyle | undefined,
     opt: GetAdapterOptionParam,
 ):Promise<Buffer> {
     return await getDefaultClient(opt).enter("getContent", async client => {
@@ -219,6 +233,7 @@ export async function getContent(
                 key: key.toString(),
             },
             domain,
+            style,
         );
         return obj.data;
     }, {
@@ -321,12 +336,34 @@ export async function restoreFile(
     });
 }
 
+export function getStyleForSignature({
+  domain,
+  preferBackendMode,
+  currentEndpointType,
+}: {
+  domain: Domain | undefined,
+  preferBackendMode: BackendMode | undefined,
+  currentEndpointType: EndpointType,
+}): UrlStyle {
+    if (domain?.apiScope === BackendMode.S3) {
+      return UrlStyle.BucketEndpoint;
+    } else if (!domain || preferBackendMode === BackendMode.S3) {
+      // some private cloud not support wildcard domain name resolving
+      return currentEndpointType === EndpointType.Public
+        ? UrlStyle.VirtualHost
+        : UrlStyle.Path;
+    } else {
+      return UrlStyle.BucketEndpoint;
+    }
+}
+
 export async function signatureUrl(
     region: string,
     bucket: string,
     key: QiniuPath | string,
     domain: Domain | undefined,
     expires: number, // seconds
+    style: UrlStyle,
     opt: GetAdapterOptionParam,
 ): Promise<URL> {
     const deadline = new Date();
@@ -341,6 +378,7 @@ export async function signatureUrl(
             },
             domain,
             deadline,
+            style,
         );
     }, {
         targetBucket: bucket,
@@ -421,7 +459,7 @@ export class Progress {
     }
 }
 
-type OperateItemsFn<T> = (client: Adapter, files: T[], listedByFolder?: FileItem.Folder) => Promise<PartialObjectError[]>;
+type OperateItemsFn<T> = (client: Adapter, files: T[], listedByPrefix?: FileItem.Folder | FileItem.Prefix) => Promise<PartialObjectError[]>;
 class BatchOperator {
     client: Adapter
     region: string
@@ -450,22 +488,56 @@ class BatchOperator {
         let promises: Promise<PartialObjectError[]>[] = [];
 
         // folders waiting process
-        let folderQueue: FileItem.Folder[] = items.filter(FileItem.isItemFolder);
+        const {
+          prefixItems,
+          folderItems,
+          fileItems,
+        } = items.reduce((res, i) => {
+          switch (i.itemType) {
+            case FileItem.ItemType.Prefix:
+              res.prefixItems.push(i);
+              break;
+            case FileItem.ItemType.Directory:
+              res.folderItems.push(i);
+              break;
+            case FileItem.ItemType.File:
+              res.fileItems.push(i);
+              break;
+          }
+          return res;
+        }, {
+          prefixItems: [] as FileItem.Prefix[],
+          folderItems: [] as FileItem.Folder[],
+          fileItems: [] as FileItem.File[],
+        });
+        const prefixPaths = prefixItems.map(p => p.path.toString());
+        let multipleQueue: (FileItem.Folder | FileItem.Prefix)[] = folderItems
+          .filter(d =>
+            !prefixPaths.some(p =>
+              d.path.toString().startsWith(p)
+            )
+          );
+        multipleQueue = multipleQueue.concat(prefixItems);
+        const fileQueue: FileItem.File[] = fileItems.filter(f =>
+          !prefixPaths.some(p =>
+            f.path.toString().startsWith(p)
+          )
+        );
 
         // process files
         promises.push(
-            this.processItems(items.filter(FileItem.isItemFile), operateFilesFn)
+            this.processItems(fileQueue, operateFilesFn)
         );
 
         // process folder
-        let folder: FileItem.Folder | undefined;
+        let multiple: FileItem.Folder | FileItem.Prefix | undefined;
         let concurrentPromises: Promise<PartialObjectError[]>[] = []
         const maxConcurrence = 3;
-        while(folder = folderQueue.shift()) {
+        while(multiple = multipleQueue.shift()) {
             if (this.progress.stopController.stopFlag) {
                 break;
             }
-            concurrentPromises.push(this.processFolder(folder, operateFilesFn, operationFoldersFn));
+            concurrentPromises.push(this.processPrefix(multiple, operateFilesFn, operationFoldersFn));
 
             // control max concurrence
             if (concurrentPromises.length >= maxConcurrence) {
@@ -484,26 +556,30 @@ class BatchOperator {
     async processItems<T>(
         items: T[],
         operateFn: OperateItemsFn<T>,
-        listedByFolder?: FileItem.Folder,
+        listedByPrefix?: FileItem.Folder | FileItem.Prefix,
     ): Promise<PartialObjectError[]> {
         this.progress.total += items.length;
         this.progress.handleProgress();
-        return operateFn(this.client, items, listedByFolder);
+        return operateFn(this.client, items, listedByPrefix);
     }
 
-    async getItemsInFolder(
-        folder: FileItem.Folder,
+    async getItemsInPrefix(
+        prefix: FileItem.Folder | FileItem.Prefix,
         marker?: string,
     ): Promise<{ items: FileItem.Item[], nextMark?: string }> {
         const listedObjects = await this.client.listObjects(
             this.region,
-            folder.bucket,
-            folder.path.toString(),
+            prefix.bucket,
+            prefix.path.toString(),
             {
                 nextContinuationToken: marker,
                 maxKeys: 1000,
             },
         );
+        if (FileItem.isItemPrefix(prefix) && !prefix.name) {
+          const p = prefix.path.toString();
+          listedObjects.objects = listedObjects.objects.filter(o => o.key !== p);
+        }
         if (!listedObjects?.objects.length) {
             return {
                 items: [],
@@ -515,8 +591,8 @@ class BatchOperator {
         }
     }
 
-    async processFolder(
-        folder: FileItem.Folder,
+    async processPrefix(
+        prefix: FileItem.Folder | FileItem.Prefix,
         operationFilesFn: OperateItemsFn<FileItem.File>,
         operationFoldersFn?: OperateItemsFn<FileItem.Folder>,
     ): Promise<PartialObjectError[]> {
@@ -529,20 +605,20 @@ class BatchOperator {
             if (this.progress.stopController.stopFlag) {
                 break;
             }
-            const getItemsInFolderResult = await this.getItemsInFolder(
-                folder,
+            const getItemsInFolderResult = await this.getItemsInPrefix(
+                prefix,
                 batchMark,
             );
             const foldersToOperate = getItemsInFolderResult.items.filter(FileItem.isItemFolder);
             const filesToOperate = getItemsInFolderResult.items.filter(FileItem.isItemFile);
             if (filesToOperate.length > 0) {
                 batchPromises.push(
-                    this.processItems(filesToOperate, operationFilesFn, folder)
+                    this.processItems(filesToOperate, operationFilesFn, prefix)
                 );
             }
             if (foldersToOperate.length > 0 && operationFoldersFn) {
                 batchPromises.push(
-                    this.processItems(foldersToOperate, operationFoldersFn, folder)
+                    this.processItems(foldersToOperate, operationFoldersFn, prefix)
                 );
             }
             batchMark = getItemsInFolderResult.nextMark;
@@ -713,8 +789,8 @@ export async function deleteFiles(
         targetBucket: bucket,
     });
 
-    function _deleteItems<T extends FileItem.Item>(client: Adapter, items: T[]): Promise<PartialObjectError[]> {
-        return client.deleteObjects(
+    function _deleteItems<T extends FileItem.Item>(_client: Adapter, items: T[]): Promise<PartialObjectError[]> {
+        return _client.deleteObjects(
             region,
             bucket,
             items.map(item => item.path.toString()),
@@ -773,10 +849,10 @@ export async function moveOrCopyFiles(
         targetBucket: target.bucket,
     });
 
-    function _moveOrCopyItems<T extends FileItem.Item>(
+    function _moveOrCopyItems<T extends FileItem.File | FileItem.Folder>(
         client: Adapter,
         foundItems: T[],
-        baseFolder?: FileItem.Folder,
+        baseFolder?: FileItem.Folder | FileItem.Prefix,
     ): Promise<PartialObjectError[]> {
         const transferObjectsOfItems: TransferObject[] = foundItems.map(foundItem => {
             let toPrefix = renamePrefix;
@@ -792,7 +868,7 @@ export async function moveOrCopyFiles(
                 }
 
                 // be path
-                if (baseFolder) {
+                if (FileItem.isItemFolder(baseFolder)) {
                     toPrefix +=
                         baseFolder.name + "/"
                         // foundItem relative path of originFolder
@@ -846,6 +922,7 @@ export async function signatureUrls(
     items: FileItem.Item[],
     domain: Domain | undefined,
     expires: number,
+    style: UrlStyle,
     progressFn: (progress: Progress) => void,
     onEachSuccess: (file: FileItem.File, url: URL) => void,
     onError: (err: any) => void,
@@ -889,6 +966,7 @@ export async function signatureUrls(
               },
               domain,
               deadline,
+              style,
             );
             onEachSuccess(file, url);
             progressCallback(i, null);
@@ -904,4 +982,3 @@ export async function signatureUrls(
         return results;
     }
 }
-

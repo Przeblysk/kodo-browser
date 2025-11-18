@@ -1,10 +1,11 @@
-import {IpcRenderer} from "electron";
 import {NatureLanguage} from "kodo-s3-adapter-sdk/dist/uplog";
 
 import {ClientOptionsSerialized} from "@common/qiniu";
 import StorageClass from "@common/models/storage-class";
 import UploadJob from "@common/models/job/upload-job";
 import {Status} from "@common/models/job/types";
+
+import {Sender} from "./types";
 
 // some types maybe should in models
 export interface DestInfo {
@@ -14,6 +15,7 @@ export interface DestInfo {
 }
 
 export interface UploadOptions {
+    accelerateUploading: boolean,
     isOverwrite: boolean,
     storageClassName: StorageClass["kodoName"],
     storageClasses: StorageClass[],
@@ -35,6 +37,7 @@ export enum UploadAction {
     StopJobsByOffline = "StopJobsByOffline",
     StartJobsByOnline = "StartJobsByOnline",
     RemoveAllJobs = "RemoveAllJobs",
+    ClearRegionsCache = "ClearRegionsCache",
 
     // common
     UpdateUiData = "UpdateUiData",
@@ -63,7 +66,10 @@ export interface UpdateConfigMessage {
 export interface LoadPersistJobsMessage {
     action: UploadAction.LoadPersistJobs,
     data: {
-        clientOptions: Pick<ClientOptionsSerialized, "accessKey" | "secretKey" | "ucUrl" | "regions">,
+        clientOptions: Pick<
+          ClientOptionsSerialized,
+          "accessKey" | "secretKey" | "sessionToken" | "bucketNameId" | "ucUrl" | "regions"
+        >,
         uploadOptions: Pick<UploadOptions, "userNatureLanguage">,
     },
 }
@@ -82,6 +88,7 @@ export interface AddedJobsReplyMessage {
     action: UploadAction.AddedJobs,
     data: {
         filePathnameList: string[],
+        erroredFilePathnameList: string[],
         destInfo: DestInfo,
     },
 }
@@ -172,6 +179,11 @@ export interface RemoveAllJobsMessage {
     data?: {},
 }
 
+export interface ClearRegionsCacheMessage {
+    action: UploadAction.ClearRegionsCache,
+    data?: {},
+}
+
 export interface JobCompletedReplyMessage {
     action: UploadAction.JobCompleted,
     data: {
@@ -202,6 +214,7 @@ export type UploadMessage = UpdateConfigMessage
     | StopJobsByOfflineMessage
     | StartJobsByOnlineMessage
     | RemoveAllJobsMessage
+    | ClearRegionsCacheMessage
 
 export type UploadReplyMessage = UpdateUiDataReplyMessage
     | AddedJobsReplyMessage
@@ -211,106 +224,114 @@ export type UploadReplyMessage = UpdateUiDataReplyMessage
 // send actions functions
 export class UploadActionFns {
     constructor(
-        private readonly ipc: IpcRenderer,
+        private readonly sender: Sender<UploadMessage>,
         private readonly channel: string,
     ) {
     }
 
     updateConfig(data: UpdateConfigMessage["data"]) {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.UpdateConfig,
             data,
         });
     }
 
     loadPersistJobs(data: LoadPersistJobsMessage["data"]) {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.LoadPersistJobs,
             data,
         });
     }
 
     addJobs(data: AddJobsMessage["data"]) {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.AddJobs,
             data,
         });
     }
 
     updateUiData(data: UpdateUiDataMessage["data"]) {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.UpdateUiData,
             data,
         });
     }
 
     waitJob(data: WaitJobMessage["data"]) {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.WaitJob,
             data,
         });
     }
 
     startJob(data: StartJobMessage["data"]) {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.StartJob,
             data,
         });
     }
 
     stopJob(data: StopJobMessage["data"]) {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.StopJob,
             data,
         });
     }
 
     removeJob(data: RemoveJobMessage["data"]) {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.RemoveJob,
             data,
         });
     }
 
     cleanUpJobs() {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.CleanupJobs,
             data: {},
         });
     }
 
     startAllJobs() {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.StartAllJobs,
             data: {},
         });
     }
 
     stopAllJobs() {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.StopAllJobs,
             data: {},
         });
     }
 
     stopJobsByOffline() {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.StopJobsByOffline,
             data: {},
         });
     }
 
     startJobsByOnline() {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.StartJobsByOnline,
             data: {},
         });
     }
 
     removeAllJobs() {
-        this.ipc.send(this.channel, {
+        this.sender.send(this.channel, {
             action: UploadAction.RemoveAllJobs,
             data: {},
+        });
+    }
+
+    clearRegionsCache() {
+        // if only ucUrl and s3RegionId are provided,
+        // it will clear all regions cache
+        this.sender.send(this.channel, {
+            action: UploadAction.ClearRegionsCache,
         });
     }
 }

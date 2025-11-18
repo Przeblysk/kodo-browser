@@ -11,16 +11,18 @@ import RoutePath from "@renderer/pages/route-path";
 import NotFound from "@renderer/pages/exceptions/not-found";
 import SignIn from "@renderer/pages/sign-in";
 import Browse from "@renderer/pages/browse";
+import BrowseShare from "@renderer/pages/browse-share";
 import SignOut from "@renderer/pages/sign-out";
 import SwitchUser from "@renderer/pages/switch-user";
 
-import {BookmarkItem, ExternalPathItem} from "@renderer/modules/kodo-address";
+import {KodoAddress} from "@renderer/modules/kodo-address";
+import DeepLinkActions from "@renderer/components/deep-link-actions";
 
 const App: React.FC = () => {
   const location = useLocation();
   const locationState = location.state as { backgroundLocation?: Location };
 
-  const [activeKodoAddress, setActiveKodoAddress] = useState<BookmarkItem | ExternalPathItem | null>(null);
+  const [activeKodoAddress, setActiveKodoAddress] = useState<KodoAddress | null>(null);
 
   return (
     <I18nProvider>
@@ -37,8 +39,10 @@ const App: React.FC = () => {
           <Route path={RoutePath.Browse} element={
             <Browse activeKodoAddress={activeKodoAddress}/>
           }/>
+          <Route path={RoutePath.BrowseShare} element={<BrowseShare/>}/>
           <Route path="*" element={<NotFound/>}/>
         </Routes>
+        <DeepLinkActions/>
         <Toaster
           position="bottom-left"
           reverseOrder={false}

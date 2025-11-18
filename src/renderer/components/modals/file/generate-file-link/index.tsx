@@ -6,19 +6,19 @@ import lodash from "lodash";
 import {BackendMode} from "@common/qiniu"
 
 import {useI18n} from "@renderer/modules/i18n";
-import {EndpointType, useAuth} from "@renderer/modules/auth";
-import {FileItem, signatureUrl} from "@renderer/modules/qiniu-client";
+import {useAuth} from "@renderer/modules/auth";
+import {FileItem, getStyleForSignature, signatureUrl} from "@renderer/modules/qiniu-client";
 import {DomainAdapter, NON_OWNED_DOMAIN, useLoadDomains} from "@renderer/modules/qiniu-client-hooks";
 import {useFileOperation} from "@renderer/modules/file-operation";
 
 import {
   DEFAULT_EXPIRE_AFTER,
-  GenerateLinkFormData,
-  GenerateLinkForm,
   DomainNameField,
   ExpireAfterField,
   FileLinkField,
   FileNameField,
+  GenerateLinkForm,
+  GenerateLinkFormData,
 } from "@renderer/components/forms/generate-link-form";
 
 interface GenerateFileLinkProps {
@@ -67,7 +67,7 @@ const GenerateFileLink: React.FC<ModalProps & GenerateFileLinkProps> = ({
     user: currentUser,
     regionId: memoRegionId,
     bucketName: memoBucketName,
-    canS3Domain: memoCanS3Domain,
+    canDefaultS3Domain: memoCanS3Domain,
     preferBackendMode,
   });
 
@@ -88,7 +88,7 @@ const GenerateFileLink: React.FC<ModalProps & GenerateFileLinkProps> = ({
   });
 
   // generate file link result
-  const handleSubmitGenerateFileLink: SubmitHandler<GenerateLinkFormData> = (data) => {
+  const handleSubmitGenerateFileLink: SubmitHandler<GenerateLinkFormData> = useCallback(data => {
     if (!memoFileItem || !currentUser) {
       return;
     }
@@ -96,29 +96,34 @@ const GenerateFileLink: React.FC<ModalProps & GenerateFileLinkProps> = ({
     const opt = {
       id: currentUser.accessKey,
       secret: currentUser.accessSecret,
-      isPublicCloud: currentUser.endpointType === EndpointType.Public,
+      endpointType: currentUser.endpointType,
       preferKodoAdapter: preferBackendMode === BackendMode.Kodo,
       preferS3Adapter:
         preferBackendMode === BackendMode.S3 ||
-        data.domain?.backendMode === BackendMode.S3,
+        data.domain?.apiScope === BackendMode.S3,
     };
 
-    const domain = data.domain?.name === NON_OWNED_DOMAIN.name
-      ? undefined
-      : data.domain;
+    const apiDomain = data.domain?.name === NON_OWNED_DOMAIN.name ? undefined : data.domain;
+
+    const style = getStyleForSignature({
+      domain: apiDomain,
+      preferBackendMode,
+      currentEndpointType: currentUser.endpointType,
+    });
 
     return signatureUrl(
       memoRegionId,
       memoBucketName,
       memoFileItem.path.toString(),
-      domain,
+      apiDomain,
       data.expireAfter,
+      style,
       opt,
     )
       .then(fileUrl => {
         setFileLink(fileUrl.toString());
       });
-  };
+  }, [currentUser, memoFileItem, memoRegionId, memoBucketName, setFileLink]);
   const generateFileLinkDebounced = useCallback(lodash.debounce(() => {
     handleSubmit(handleSubmitGenerateFileLink)();
   }, 500), [handleSubmit, handleSubmitGenerateFileLink]);

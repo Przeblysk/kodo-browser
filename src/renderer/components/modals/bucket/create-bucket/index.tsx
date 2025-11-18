@@ -8,9 +8,9 @@ import {BackendMode} from "@common/qiniu";
 
 import {BucketName as BucketNamePattern} from "@renderer/const/patterns";
 import {useI18n} from "@renderer/modules/i18n";
-import {EndpointType, useAuth} from "@renderer/modules/auth";
+import {useAuth} from "@renderer/modules/auth";
 import {createBucket} from "@renderer/modules/qiniu-client";
-import useLoadRegions from "@renderer/modules/qiniu-client-hooks/use-load-regions";
+import {useLoadRegions} from "@renderer/modules/qiniu-client-hooks";
 import * as AuditLog from "@renderer/modules/audit-log";
 import {useFileOperation} from "@renderer/modules/file-operation";
 
@@ -52,6 +52,7 @@ const CreateBucket: React.FC<ModalProps & CreateBucketProps> = ({
     loadRegionsState,
   } = useLoadRegions({
     user: currentUser,
+    shouldAutoReload: true,
   });
   useEffect(() => {
     if (!loadRegionsState.regions.length) {
@@ -74,7 +75,7 @@ const CreateBucket: React.FC<ModalProps & CreateBucketProps> = ({
     const opt = {
       id: currentUser.accessKey,
       secret: currentUser.accessSecret,
-      isPublicCloud: currentUser.endpointType === EndpointType.Public,
+      endpointType: currentUser.endpointType,
       preferKodoAdapter: preferBackendMode === BackendMode.Kodo,
       preferS3Adapter: preferBackendMode === BackendMode.S3,
     };
@@ -140,8 +141,11 @@ const CreateBucket: React.FC<ModalProps & CreateBucketProps> = ({
               </Form.Label>
               <div>
                 {
-                  loadRegionsState.regions.length > 0
+                  loadRegionsState.loading
                     ? (
+                      <Spinner className="me-2" animation="border" size="sm"/>
+                    )
+                    : (
                       <>
                         <Form.Select
                           {...register("regionId", {
@@ -160,9 +164,6 @@ const CreateBucket: React.FC<ModalProps & CreateBucketProps> = ({
                           {errors.regionId?.message}
                         </Form.Control.Feedback>
                       </>
-                    )
-                    : (
-                      <Spinner className="me-2" animation="border" size="sm"/>
                     )
                 }
               </div>

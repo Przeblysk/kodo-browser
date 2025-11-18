@@ -6,6 +6,7 @@ const dict: Dictionary = {
         empty: "現時点ではデータがありません",
         ok: "OK",
         cancel: "キャンセル",
+        all: "全て",
         close: "クローズ",
         save: "保存",
         saving: "保存する",
@@ -27,6 +28,14 @@ const dict: Dictionary = {
         noDomainToGet: "オブジェクトを取得するためのドメインがない",
         errored: "エラーが発生しました",
         paused: "停止しました",
+        custom: "自定义",
+
+        second: "秒",
+        seconds: "秒",
+        minute: "分",
+        minutes: "分",
+        hour: "時間",
+        hours: "時間",
 
         directory: "フォルダ",
         upload: "アップロード",
@@ -41,9 +50,21 @@ const dict: Dictionary = {
         more: "もっと",
         exportLink: "ダウンロードアドレスを取得する",
         exportLinks: "ダウンロードリンクのエクスポート",
+        share: "共有",
         restore: "リストア",
         changeStorageClass: "ストレージクラスを設定する",
+        unknownStorageClass: "不明なストレージクラス",
         clickToRetry: "再試行",
+    },
+
+    deepLinkActions: {
+        signIn: {
+            invalidParams: "URLが無効です。必要なパラメータが失われました。",
+            signOutConfirm: {
+                title: "ログアウト",
+                description: "共有URLでサインインしているため、ログアウトします。",
+            },
+        },
     },
 
     top: {
@@ -73,7 +94,10 @@ const dict: Dictionary = {
 
     signIn: {
         title: "Access Key ログイン",
+        titleShareLink: "共有リンクログイン",
         accessKeyHistory: "AK の歴史",
+        gotoShareLinkForm: "共有リンクを使用してログイン",
+        gotoAkForm: "AKを使用してログイン",
         form: {
             accessKeyId: {
                 holder: "AccessKeyId",
@@ -109,6 +133,23 @@ const dict: Dictionary = {
             },
             submit: "ログイン",
             submitting: "ログイン中",
+        },
+        formShareLink: {
+            shareLink: {
+                label: "共有リンク：",
+                holder: "フォルダの共有リンクを入力してください",
+                feedback: {
+                    invalidFormat: "リンクの形式が正しくありません",
+                    invalidPrivateFormat: "リンクの形式が正しくありません。非公開クラウドユーザーの場合は、プライベートクラウド共有アドレスを設定してください",
+                },
+            },
+            extractCode: {
+                label: "抽出コード：",
+                holder: "英数字のみ",
+                feedback: {
+                    invalidFormat: "英数字のみで、6文字でなければなりません",
+                },
+            },
         },
     },
 
@@ -160,6 +201,11 @@ const dict: Dictionary = {
                 nonOwnedDomain: "所有ドメイン名はありません",
                 refreshTooltip: "リフレッシュ",
             },
+            selectPrefix: {
+                select: "すべてのアイテムを選択，未読み込みのコンテンツを含む",
+                selected: "すべてのアイテムを選択済み，未読み込みのコンテンツを含む。",
+                clear: "選択をクリア",
+            },
         },
         fileTable: {
             fileName: "名前",
@@ -191,14 +237,15 @@ const dict: Dictionary = {
                 finished: "完了",
                 failed: "失敗",
                 stopped: "停止",
-                waiting: "待っている",
-                running: "ランニング",
+                waiting: "待機中",
+                running: "実行中",
                 duplicated: "すでに存在",
                 verifying: "検証中",
             },
             removeConfirmOk: "削除",
             unknownError: "不明なエラーです",
             fileDuplicated: "ファイルは既に存在",
+            accelerateUploading: "アップロードを加速する",
         },
         upload: {
             dropZone: {
@@ -211,6 +258,7 @@ const dict: Dictionary = {
             hint: {
                 addingJobs: "ダウンロードキューに追加中…",
                 addedJobs: "すべて追加されました",
+                addedJobsErrored: "アクセスエラーのため、一部のファイルがアップロードキューに追加されませんでした",
             },
             error: {
                 nothing: "アップロードできるファイルは見つかりませんでした",
@@ -218,7 +266,7 @@ const dict: Dictionary = {
             },
             toolbar: {
                 search: {
-                    holder: "名前またはステータスによるフィルタリング",
+                    holder: "名前によるフィルタリング",
                 },
                 emptyDirectorySwitch: "空のディレクトリのアップロードを許可/禁止する",
                 startAllButton: "すべて開始",
@@ -242,7 +290,7 @@ const dict: Dictionary = {
             },
             toolbar: {
                 search: {
-                    holder: "名前またはステータスによるフィルタリング",
+                    holder: "名前によるフィルタリング",
                 },
                 overwriteSwitch: "ダウンロードを上書きするかどうか",
                 startAllButton: "すべて開始",
@@ -274,11 +322,15 @@ const dict: Dictionary = {
             fileName: {
                 label: "名前：",
             },
+            domainType: {
+                cdn: "CDN",
+                origin: "配信元サーバー",
+            },
             domainName: {
                 label: "ドメイン名：",
                 nonOwnedDomain: "所有ドメイン名はありません",
                 feedback: {
-                    emptyFileNameByS3Hint: "空のファイル名と所有ドメイン名はありませんでは利用できません",
+                    emptyFileNameByS3Hint: "空のファイル名と S3 ドメイン名はありませんでは利用できません",
                 },
             },
             expireAfter: {
@@ -389,11 +441,15 @@ const dict: Dictionary = {
                     },
                     multipartUploadPartSize: {
                         label: "シ断点アップロードスライスサイズ：",
-                        hint: "単位：MB，範囲：8 MB - 100 MB",
+                        hint: "単位：MB，範囲：${min} MB - ${max} MB",
+                    },
+                    multipartUploadConcurrency: {
+                        label: "断点アップロードの並發処理数：",
+                        hint: "範囲：${min}-${max}",
                     },
                     maxUploadConcurrency: {
                         label: "アップロードの最大同時処理数：",
-                        hint: "範囲：1-10",
+                        hint: "範囲：${min}-${max}",
                     },
                     enabledUploadSpeedLimit: {
                         label: "アップロード速度制限：",
@@ -422,7 +478,7 @@ const dict: Dictionary = {
                     },
                     maxDownloadConcurrency: {
                         label: "ダウンロードの最大同時処理数：",
-                        hint: "範囲：1-10",
+                        hint: "範囲：${min}-${max}",
                     },
                     enabledDownloadSpeedLimit: {
                         label: "ダウンロード速度制限：",
@@ -597,7 +653,7 @@ const dict: Dictionary = {
                 },
                 fileName: {
                     label: "名前を変更する：",
-                    hint: "/ で始まるか、または終了することはできません、 中間に連続 /",
+                    hint: "/ で始まるか、または終了することはできません、 中間に連続 /；ファイルパスは元のパスと同じであってはいけません",
                 },
             },
             replaceConfirm: {
@@ -609,16 +665,18 @@ const dict: Dictionary = {
         deleteFiles: {
             title: "ファイルを削除",
             description: "次のディレクトリまたはファイルが削除されます：",
+            prefixDescription: "次の接頭辞を持つディレクトリまたはファイルが削除されます：",
         },
 
         copyFiles: {
             title: "ファイルをコピー",
             hintFiltered: "自分自身へや空のファイル名のディレクトリのコピーの禁止，一部の無効な項目を除去。",
             description: "このディレクトリに${operation}  (同じファイルまたはディレクトリが対象となります)",
+            prefixDescription: "以下の接頭辞を持つディレクトリまたはファイルをこのディレクトリに${operation}してください  (同じファイルまたはディレクトリが対象となります)",
             form: {
                 fileName: {
                     label: "コピー ファイル名：",
-                    hint: "/ で始まるか、または終了することはできません、 中間に連続 /"
+                    hint: "/ で始まるか、または終了することはできません、 中間に連続 /；ファイルパスは元のパスと同じであってはいけません"
                 },
             },
             replaceConfirm: {
@@ -631,6 +689,7 @@ const dict: Dictionary = {
             title: "ファイルを移動",
             hintFiltered: "自分自身へや空のファイル名のディレクトリの移動の禁止，一部の無効な項目を除去。",
             description: "このディレクトリに${operation}  (同じファイルまたはディレクトリが対象となります)",
+            prefixDescription: "以下の接頭辞を持つディレクトリまたはファイルをこのディレクトリに${operation}してください  (同じファイルまたはディレクトリが対象となります)",
             form: {
                 fileName: {
                     label: "新しいファイル名：",
@@ -646,6 +705,7 @@ const dict: Dictionary = {
         changeFilesStorageClass: {
             title: "ストレージクラスを設定する",
             description: "以下のディレクトリまたはファイルが更新されます",
+            prefixDescription: "以下の接頭辞を持つディレクトリまたはファイルが更新されます",
         },
 
         changeFileStorageClass: {
@@ -655,6 +715,7 @@ const dict: Dictionary = {
         restoreFiles: {
             title: "リストア",
             description: "次のディレクトリまたはファイルがフリーズ解除されます：",
+            prefixDescription: "以下の接頭辞を持つディレクトリまたはファイルがフリーズ解除されます",
         },
 
         restoreFile: {
@@ -664,6 +725,7 @@ const dict: Dictionary = {
         generateFileLinks: {
             title: "ダウンロードリンクのエクスポート",
             description: "次のファイルの外部チェーンがエクスポートされます",
+            prefixDescription: "以下の接頭辞を持つファイルの外部チェーンがエクスポートされます",
             hintFiltered: "ファイル名が空のファイルのリンクをエクスポートできない，一部の無効な項目を除去。",
             csvFile: {
                 label: "ファイルの場所をエクスポート：",
@@ -681,6 +743,41 @@ const dict: Dictionary = {
             title: "ダウンロードリンクのエクスポート",
         },
 
+        createDirectoryShareLink: {
+            title: "フォルダを共有する",
+            form: {
+                directoryName: {
+                    label: "フォルダ：",
+                },
+                expireAfter: {
+                    label: "有効期限：",
+                    suffix: "秒",
+                    hint: "範囲：${minSeconds} - ${maxSeconds} 秒",
+                },
+                extractCode: {
+                    label: "抽出コード：",
+                    suffix: "ランダム生成",
+                    hint: "英数字のみで、6文字でなければなりません",
+                },
+                shareLink: {
+                    label: "共有リンク：",
+                },
+                expiredAt: {
+                    label: "失効時間：",
+                },
+            },
+            copyShareMessageButton: "リンクと抽出コードをコピー",
+            copyShareMessageSuccess: "コピーが成功しました",
+            shareMessage: [
+                "いくつかのファイルを共有しました、ご覧ください！",
+                "",
+                "${shareLink}",
+                "",
+                "抽出コード：${extractCode}",
+                "有効期限：${expiredAt}"
+            ].join("\n"),
+        },
+
         uploadConfirm: {
             title: "ファイルのアップロード",
             previewList: {
@@ -690,12 +787,22 @@ const dict: Dictionary = {
             form: {
                 isOverwrite: {
                     label: "上書き：",
-                    hint: "（今回の上書き）",
+                    hint: "（今回だけ）",
+                },
+                accelerateUploading: {
+                  label: "アップロードを加速する：",
+                  hint: "（今回だけ）",
+                  hintSecondary: "開いた後、アクセラレーションドメインを優先してアップロードします；アクセラレーションドメインを使用する場合、追加通信料金が発生します。",
                 },
                 storageClassKodoName: {
                     label: "保管タイプ：",
                 },
             },
+            popupHint: {
+              question: "すでにアクセラレーションドメインを有効にしましたが、アクセラレーションドメインを使用するスイッチが表示されませんか？",
+              clickHere: "こちらをクリック",
+              refreshIt: "リフレッシュしてみてください",
+            }
         },
 
         preview: {
@@ -723,7 +830,7 @@ const dict: Dictionary = {
                 }
             },
             error: {
-                emptyFileNameByS3Hint: "空のファイル名と所有ドメイン名はありませんでは利用できません",
+                emptyFileNameByS3Hint: "空のファイル名と S3 ドメイン名はありませんでは利用できません",
                 failedGenerateLink: "プレビュー リンクの取得に失敗しました",
                 failedGetContent: "ファイルの内容の取得に失敗しました",
                 contentNotChanged: "内容は修正していません",

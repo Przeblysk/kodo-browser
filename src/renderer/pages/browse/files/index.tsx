@@ -1,26 +1,29 @@
 import path from "path";
 
 import {dialog as electronDialog} from '@electron/remote'
-import React, {useEffect, useMemo, useState} from "react";
+import React, {useEffect, useMemo, useState, useSyncExternalStore} from "react";
 import {toast} from "react-hot-toast";
 import {Region} from "kodo-s3-adapter-sdk";
 
 import StorageClass from "@common/models/storage-class";
+import {BackendMode} from "@common/qiniu";
 
 import * as LocalLogger from "@renderer/modules/local-logger";
 import {useI18n} from "@renderer/modules/i18n";
-import {EndpointType, useAuth} from "@renderer/modules/auth";
+import {useAuth} from "@renderer/modules/auth";
 import {KodoNavigator, useKodoNavigator} from "@renderer/modules/kodo-address";
-import Settings, {ContentViewStyle} from "@renderer/modules/settings";
+import {ContentViewStyle, appPreferences, useEndpointConfig} from "@renderer/modules/user-config-store";
 
-import {BucketItem, FileItem, privateEndpointPersistence} from "@renderer/modules/qiniu-client";
-import {DomainAdapter, useLoadDomains, useLoadFiles} from "@renderer/modules/qiniu-client-hooks";
+import {BucketItem, FileItem, getStyleForSignature, isAccelerateUploadingAvailable} from "@renderer/modules/qiniu-client";
+import {DomainAdapter, NON_OWNED_DOMAIN, useLoadDomains, useLoadFiles} from "@renderer/modules/qiniu-client-hooks";
 import ipcDownloadManager from "@renderer/modules/electron-ipc-manages/ipc-download-manager";
 import * as AuditLog from "@renderer/modules/audit-log";
+import {useFileOperation} from "@renderer/modules/file-operation";
 
 import DropZone from "@renderer/components/drop-zone";
 import {useDisplayModal, useIsShowAnyModal} from "@renderer/components/modals/hooks";
 import UploadFilesConfirm from "@renderer/components/modals/file/upload-files-confirm";
+import ipcUploadManager from "@renderer/modules/electron-ipc-manages/ipc-upload-manager";
 
 import FileToolBar from "./file-tool-bar";
 import FileContent from "./file-content";
@@ -34,16 +37,24 @@ interface FilesProps {
 
 const Files: React.FC<FilesProps> = (props) => {
   const {currentLanguage, translate} = useI18n();
-  const {currentUser} = useAuth();
+  const {currentUser, shareSession} = useAuth();
+  const {
+    bucketPreferBackendMode: preferBackendMode,
+    bucketGrantedPermission,
+  } = useFileOperation();
 
-  const customizedEndpoint = useMemo(() => {
-    return currentUser?.endpointType === EndpointType.Public
-      ? {
-        ucUrl: "",
-        regions: [],
-      }
-      : privateEndpointPersistence.read()
-  }, [currentUser?.endpointType]);
+  const {
+    state: appPreferencesState,
+    data: appPreferencesData,
+  } = useSyncExternalStore(
+    appPreferences.store.subscribe,
+    appPreferences.store.getSnapshot,
+  );
+
+  const {
+    endpointConfigData,
+  } = useEndpointConfig(currentUser, shareSession);
+
   const {currentAddress, basePath, goTo} = useKodoNavigator();
 
   // files selector
@@ -52,14 +63,26 @@ const Files: React.FC<FilesProps> = (props) => {
     if (checked) {
       setSelectedFiles(m => {
         for (const f of files) {
-          m.set(f.path.toString(), f);
+          // prevent empty name file conflict with prefix item
+          const selectedItemId = [f.itemType, f.path.toString()].join(":");
+          m.set(selectedItemId, f);
         }
         return new Map(m);
       });
     } else {
       setSelectedFiles(m => {
         for (const f of files) {
-          m.delete(f.path.toString());
+          if (FileItem.isItemPrefix(f)) {
+            // auto remove all items stated with the unchecked prefix
+            for (const item of m.values()) {
+              if (item.path.toString().startsWith(f.path.toString())) {
+                m.delete([item.itemType, item.path.toString()].join(":"));
+              }
+            }
+          }
+          // prevent empty name file conflict with prefix item
+          const selectedItemId = [f.itemType, f.path.toString()].join(":");
+          m.delete(selectedItemId);
         }
         return new Map(m);
       });
@@ -95,8 +118,11 @@ const Files: React.FC<FilesProps> = (props) => {
     bucketName: props.bucket?.name,
     storageClasses: props.region?.storageClasses,
     currentAddressPath: currentAddress.path,
-    pageSize: Settings.filesLoadingSize,
+    pageSize: appPreferencesData.filesItemLoadSize,
     shouldAutoReload: () => {
+      if (!appPreferencesState.initialized) {
+        return false;
+      }
       if (!props.region || !props.bucket) {
         toast.error("region or bucket not found!");
         return false;
@@ -106,9 +132,10 @@ const Files: React.FC<FilesProps> = (props) => {
     },
     autoReloadDeps: [
       props.toggleRefresh,
+      appPreferencesState.initialized,
     ],
     preferBackendMode: props.bucket?.preferBackendMode,
-    defaultLoadAll: !Settings.stepByStepLoadingFiles,
+    defaultLoadAll: !appPreferencesData.filesItemLazyLoadEnabled,
   });
 
   const handleReloadFiles = ({
@@ -116,10 +143,7 @@ const Files: React.FC<FilesProps> = (props) => {
   }: {
     originBasePath: string,
   }) => {
-    setSelectedFiles(m => {
-      m.clear();
-      return new Map(m);
-    });
+    setSelectedFiles(new Map());
     let p = basePath;
     if (p === undefined || originBasePath !== basePath) {
       return;
@@ -129,7 +153,7 @@ const Files: React.FC<FilesProps> = (props) => {
     }
     reloadFiles(
       p,
-      !Settings.stepByStepLoadingFiles,
+      !appPreferencesData.filesItemLazyLoadEnabled,
     )
       .catch(err => {
         toast.error(err.toString());
@@ -157,7 +181,51 @@ const Files: React.FC<FilesProps> = (props) => {
       res[storageClass.kodoName] = storageClass;
       return res;
     }, {});
-  }, [props.region?.storageClasses]);
+  }, [props.region?.storageClasses?.length]);
+
+  // bucket accelerate uploading
+  const [canAccelerateUploading, setCanAccelerateUploading] = useState<boolean>(false);
+  const [fetchingAccelerateUploading, setFetchingAccelerateUploading] = useState<boolean>(false);
+  const fetchAccelerateUploading = ({
+    needFeedback,
+    refreshCache,
+  }: {
+    needFeedback?: boolean,
+    refreshCache?: boolean,
+  } = {}) => {
+    if (!currentUser || !props.bucket || fetchingAccelerateUploading) {
+      return;
+    }
+    const opt = {
+      id: currentUser.accessKey,
+      secret: currentUser.accessSecret,
+      endpointType: currentUser.endpointType,
+    }
+    setFetchingAccelerateUploading(true);
+    let p = isAccelerateUploadingAvailable(
+      currentUser,
+      props.bucket?.name,
+      opt,
+      refreshCache,
+    );
+    if (needFeedback) {
+      p = toast.promise(p, {
+        loading: translate("common.refreshing"),
+        success: translate("common.refreshed"),
+        error: err => `${translate("common.failed")}: ${err}`,
+      });
+    }
+    p.then(setCanAccelerateUploading)
+      .catch(err => LocalLogger.error(err))
+      .finally(() => setFetchingAccelerateUploading(false));
+  };
+  const refreshCanAccelerateUploading = () => {
+    ipcUploadManager.clearRegionsCache();
+    fetchAccelerateUploading({
+      needFeedback: true,
+      refreshCache: true,
+    });
+  };
 
   // domains loader and selector
   const {
@@ -175,10 +243,9 @@ const Files: React.FC<FilesProps> = (props) => {
         toast.error("region or bucket not found!");
         return false;
       }
-      setSelectedFiles(new Map());
       return true;
     },
-    canS3Domain: !props.bucket?.grantedPermission,
+    canDefaultS3Domain: !bucketGrantedPermission,
     preferBackendMode: props.bucket?.preferBackendMode,
   });
   const [selectedDomain, setSelectedDomain] = useState<DomainAdapter | undefined>();
@@ -197,10 +264,9 @@ const Files: React.FC<FilesProps> = (props) => {
   };
 
   // view style
-  const [viewStyle, setViewStyle] = useState(Settings.contentViewStyle);
+  const viewStyle = appPreferencesData.contentViewStyle;
   const handleChangeViewStyle = (style: ContentViewStyle) => {
-    setViewStyle(style);
-    Settings.contentViewStyle = style;
+    appPreferences.set("contentViewStyle", style);
   };
 
   // modal state
@@ -219,6 +285,15 @@ const Files: React.FC<FilesProps> = (props) => {
   ] = useDisplayModal<{filePaths: string[]}>({
     filePaths: []
   });
+  useEffect(() => {
+    if (!isShowUploadFilesConfirm) {
+      return;
+    }
+    ipcUploadManager.clearRegionsCache();
+    fetchAccelerateUploading({
+      refreshCache: true,
+    });
+  }, [isShowUploadFilesConfirm]);
 
   // handle upload and download
   const handleUploadFiles = async (filePaths: string[]) => {
@@ -278,14 +353,22 @@ const Files: React.FC<FilesProps> = (props) => {
       to: destDirectoryPath,
       from: remoteObjects.map(i => i.key),
     });
+    const domain = selectedDomain.name === NON_OWNED_DOMAIN.name
+      ? undefined
+      : selectedDomain;
     ipcDownloadManager.addJobs({
       remoteObjects,
       destPath: destDirectoryPath,
       downloadOptions: {
         region: currentRegion.s3Id,
         bucket: currentBucket.name,
-        domain: selectedDomain,
-        isOverwrite: Settings.overwriteDownload,
+        domain: domain,
+        urlStyle: getStyleForSignature({
+          domain: domain,
+          preferBackendMode,
+          currentEndpointType: currentUser.endpointType,
+        }),
+        isOverwrite: appPreferencesData.overwriteDownloadEnabled,
         storageClasses: currentRegion.storageClasses,
         // userNatureLanguage needs mid-dash but i18n using lo_dash
         // @ts-ignore
@@ -294,14 +377,20 @@ const Files: React.FC<FilesProps> = (props) => {
       clientOptions: {
         accessKey: currentUser.accessKey,
         secretKey: currentUser.accessSecret,
-        ucUrl: customizedEndpoint.ucUrl,
-        regions: customizedEndpoint.regions.map(r => ({
+        sessionToken: shareSession?.sessionToken,
+        bucketNameId: shareSession
+          ? {
+            [shareSession.bucketName]: shareSession.bucketId,
+          }
+          : undefined,
+        ucUrl: endpointConfigData.ucUrl,
+        regions: endpointConfigData.regions.map(r => ({
           id: "",
           s3Id: r.identifier,
           label: r.label,
           s3Urls: [r.endpoint],
         })),
-        backendMode: selectedDomain.backendMode,
+        backendMode: selectedDomain.apiScope as BackendMode,
       },
     });
   };
@@ -313,11 +402,19 @@ const Files: React.FC<FilesProps> = (props) => {
         availableStorageClasses={availableStorageClasses}
         regionId={props.region?.s3Id}
         bucketName={props.bucket?.name}
-        bucketPermission={props.bucket?.grantedPermission}
         directoriesNumber={files.filter(f => FileItem.isItemFolder(f)).length}
         listedFileNumber={files.length}
         hasMoreFiles={hasMoreFiles}
         selectedFiles={[...selectedFiles.values()]}
+        couldShowSelectPrefix={
+          Array.from(selectedFiles.values()).some(FileItem.isItemPrefix) ||
+          (
+            hasMoreFiles &&
+            files.length > 0 &&
+            selectedFiles.size === files.length
+          )
+        }
+        onSelectPrefix={handleChangeSelectedFiles}
 
         loadingDomains={loadingDomains}
         domains={domains}
@@ -360,7 +457,7 @@ const Files: React.FC<FilesProps> = (props) => {
         onReloadFiles={handleReloadFiles}
       />
       {
-        props.bucket?.grantedPermission === "readonly"
+        bucketGrantedPermission === "readonly"
           ? null
           : <DropZone
             className="files-upload-zone bg-body bg-opacity-75"
@@ -382,6 +479,8 @@ const Files: React.FC<FilesProps> = (props) => {
               destPath={basePath ?? ""}
               filePaths={filePathsForUploadConfirm}
               storageClasses={Object.values(availableStorageClasses ?? {})}
+              canAccelerateUploading={canAccelerateUploading}
+              onClickRefreshCanAccelerateUploading={() => refreshCanAccelerateUploading()}
             />
           </>
       }

@@ -3,7 +3,7 @@ import fs, {constants as fsConstants, promises as fsPromises} from "fs";
 
 import lodash from "lodash";
 import {Downloader} from "kodo-s3-adapter-sdk";
-import {Adapter, Domain, ObjectHeader, StorageClass} from "kodo-s3-adapter-sdk/dist/adapter";
+import {Adapter, Domain, ObjectHeader, StorageClass, UrlStyle} from "kodo-s3-adapter-sdk/dist/adapter";
 import {NatureLanguage} from "kodo-s3-adapter-sdk/dist/uplog";
 
 import {ClientOptions, createQiniuClient} from "@common/qiniu";
@@ -36,7 +36,8 @@ interface DownloadOptions {
 
 interface OptionalOptions extends DownloadOptions {
     id: string,
-    domain?: Domain,
+    domain: Domain | undefined,
+    urlStyle: UrlStyle | undefined,
 
     status: Status,
     message: string,
@@ -51,12 +52,15 @@ interface OptionalOptions extends DownloadOptions {
 
     onStatusChange?: (status: Status, prev: Status) => void,
     onProgress?: (prog: DownloadJob["prog"]) => void,
+    onPartCompleted?: (partSize: number) => void,
 }
 
 type Options = RequiredOptions & Partial<OptionalOptions>
 
 const DEFAULT_OPTIONS: OptionalOptions = {
     id: "",
+    domain: undefined,
+    urlStyle: undefined,
 
     multipartDownloadThreshold: 100,
     multipartDownloadSize: 8,
@@ -85,8 +89,9 @@ type PersistInfo = {
     from: RequiredOptions["from"],
     backendMode: RequiredOptions["clientOptions"]["backendMode"],
     domain: OptionalOptions["domain"],
+    urlStyle: OptionalOptions["urlStyle"],
     prog: OptionalOptions["prog"],
-    status: OptionalOptions["status"],
+    status: Exclude<OptionalOptions["status"], Status.Waiting | Status.Running>,
     message: OptionalOptions["message"],
     multipartDownloadThreshold: OptionalOptions["multipartDownloadThreshold"],
     multipartDownloadSize: OptionalOptions["multipartDownloadSize"],
@@ -111,6 +116,8 @@ export default class DownloadJob extends TransferJob {
     ): DownloadJob {
         return new DownloadJob({
             id,
+            domain: persistInfo.domain,
+            urlStyle: persistInfo.urlStyle,
             status: persistInfo.status,
             message: persistInfo.message,
 
@@ -189,7 +196,7 @@ export default class DownloadJob extends TransferJob {
         this.startDownload = this.startDownload.bind(this);
         this.handleProgress = this.handleProgress.bind(this);
         this.handleHeader = this.handleHeader.bind(this);
-        this.handlePartGet = this.handlePartGet.bind(this);
+        this.handlePartGot = this.handlePartGot.bind(this);
         this.handleDownloadError = this.handleDownloadError.bind(this);
     }
 
@@ -202,12 +209,17 @@ export default class DownloadJob extends TransferJob {
     }
 
     get persistInfo(): PersistInfo {
+        let persistStatus = this.status;
+        if (persistStatus === Status.Waiting || persistStatus === Status.Running) {
+          persistStatus = Status.Stopped;
+        }
         return {
             // read-only info
             region: this.options.region,
             to: this.options.to,
             from: this.options.from,
             domain: this.options.domain,
+            urlStyle: this.options.urlStyle,
             storageClasses: this.options.storageClasses,
             backendMode: this.options.clientOptions.backendMode,
 
@@ -217,7 +229,7 @@ export default class DownloadJob extends TransferJob {
                 total: this.prog.total,
                 resumable: this.prog.resumable
             },
-            status: this.status,
+            status: persistStatus,
             message: this.message,
             multipartDownloadThreshold: this.options.multipartDownloadThreshold,
             multipartDownloadSize: this.options.multipartDownloadSize,
@@ -292,6 +304,7 @@ export default class DownloadJob extends TransferJob {
             this.tempFilePath,
             this.options.domain,
             {
+                urlStyle: this.options.urlStyle,
                 recoveredFrom: this.prog.resumable
                     ? this.prog.loaded
                     : 0,
@@ -303,7 +316,7 @@ export default class DownloadJob extends TransferJob {
                     : undefined,
                 getCallback: {
                     headerCallback: this.handleHeader,
-                    partGetCallback: this.handlePartGet,
+                    partGetCallback: this.handlePartGot,
                     progressCallback: this.handleProgress,
                 },
             },
@@ -432,11 +445,11 @@ export default class DownloadJob extends TransferJob {
         // useless?
     }
 
-    private handlePartGet(_partSize: number): void {
+    private handlePartGot(partSize: number): void {
         if (!this.downloader) {
             return;
         }
-        // useless?
+        this.options.onPartCompleted?.(partSize)
     }
 
     private async checkAndCreateBaseDir(filePath: string) {
@@ -450,16 +463,14 @@ export default class DownloadJob extends TransferJob {
         if (isBaseDirValid) {
             return;
         }
-        const isBaseDirExists: boolean = await fsPromises.access(
-            baseDirPath,
-            fsConstants.F_OK,
-        )
-            .then(() => true)
-            .catch(() => false);
-        if (isBaseDirExists) {
-            throw Error(`Can't download to ${this.options.to}: Permission denied`);
+        try {
+          await fsPromises.mkdir(baseDirPath, {recursive: true});
+        } catch (err: any) {
+          if (err.code === "EEXIST") {
+            return;
+          }
+          throw new Error(`Can't download to ${baseDirPath}`, {cause: err});
         }
-        await fsPromises.mkdir(baseDirPath, {recursive: true})
     }
 
     private async handleDownloadError(err: Error) {

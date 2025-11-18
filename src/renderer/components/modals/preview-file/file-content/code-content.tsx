@@ -6,10 +6,11 @@ import {MergeView} from "codemirror/addon/merge/merge";
 import {BackendMode} from "@common/qiniu"
 
 import {useI18n} from "@renderer/modules/i18n";
-import {EndpointType, useAuth} from "@renderer/modules/auth";
-import {getContent, saveContent} from "@renderer/modules/qiniu-client";
+import {useAuth} from "@renderer/modules/auth";
+import {getContent, saveContent, getStyleForSignature} from "@renderer/modules/qiniu-client";
 import {DomainAdapter, NON_OWNED_DOMAIN} from "@renderer/modules/qiniu-client-hooks";
 import {DiffView, EditorView} from "@renderer/modules/codemirror";
+import {useFileOperation} from "@renderer/modules/file-operation";
 
 import LoadingHolder from "@renderer/components/loading-holder";
 
@@ -34,6 +35,7 @@ const CodeContent: React.FC<CodeContentProps> = ({
 }) => {
   const {translate} = useI18n();
   const {currentUser} = useAuth();
+  const {bucketPreferBackendMode: preferBackendMode} = useFileOperation();
 
   // code mirror editor
   const editorRef = useRef<Editor>();
@@ -73,16 +75,22 @@ const CodeContent: React.FC<CodeContentProps> = ({
     const opt = {
       id: currentUser.accessKey,
       secret: currentUser.accessSecret,
-      isPublicCloud: currentUser.endpointType === EndpointType.Public,
-      preferS3Adapter: domain.backendMode === BackendMode.S3,
+      endpointType: currentUser.endpointType,
+      preferS3Adapter: domain.apiScope === BackendMode.S3,
     };
+    const domainToGet = domain?.name === NON_OWNED_DOMAIN.name
+      ? undefined
+      : domain;
     getContent(
       regionId,
       bucketName,
       filePath,
-      domain.name === NON_OWNED_DOMAIN.name
-        ? undefined
-        : domain,
+      domainToGet,
+      getStyleForSignature({
+        domain: domainToGet,
+        preferBackendMode,
+        currentEndpointType: currentUser.endpointType,
+      }),
       opt,
     )
       .then(contentBuffer => {
@@ -112,9 +120,9 @@ const CodeContent: React.FC<CodeContentProps> = ({
     const opt = {
       id: currentUser.accessKey,
       secret: currentUser.accessSecret,
-      isPublicCloud: currentUser.endpointType === EndpointType.Public,
-      preferS3Adapter: domain.backendMode === BackendMode.S3,
-      preferKodoAdapter: domain.backendMode === BackendMode.Kodo,
+      endpointType: currentUser.endpointType,
+      preferS3Adapter: domain.apiScope === BackendMode.S3,
+      preferKodoAdapter: domain.apiScope === BackendMode.Kodo,
     };
 
     const p = saveContent(

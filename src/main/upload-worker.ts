@@ -1,4 +1,5 @@
 import {Region} from "kodo-s3-adapter-sdk";
+import {KodoHttpClient} from "kodo-s3-adapter-sdk/dist/kodo-http-client";
 
 import {
   AddedJobsReplyMessage,
@@ -21,7 +22,6 @@ uploadManagerConfig.onCreatedDirectory = handleCreatedDirectory;
 const uploadManager = new UploadManager(uploadManagerConfig);
 
 process.on("uncaughtException", (err) => {
-    uploadManager.persistJobs(true);
     console.error("upload worker: uncaughtException", err);
 });
 
@@ -73,15 +73,13 @@ process.on("message", (message: UploadMessage) => {
                 },
                 message.data.uploadOptions,
                 {
-                    jobsAdding: () => {
-                        uploadManager.persistJobs();
-                    },
-                    jobsAdded: () => {
+                    jobsAdded: (succeed, failed) => {
                         const replyMessage: AddedJobsReplyMessage = {
                             action: UploadAction.AddedJobs,
                             data: {
-                                filePathnameList: message.data.filePathnameList,
+                                filePathnameList: succeed,
                                 destInfo: message.data.destInfo,
+                                erroredFilePathnameList: failed,
                             },
                         };
                         process.send?.(replyMessage);
@@ -116,7 +114,6 @@ process.on("message", (message: UploadMessage) => {
         }
         case UploadAction.RemoveJob: {
             uploadManager.removeJob(message.data.jobId);
-            uploadManager.persistJobs();
             break;
         }
         case UploadAction.CleanupJobs: {
@@ -141,7 +138,10 @@ process.on("message", (message: UploadMessage) => {
         }
         case UploadAction.RemoveAllJobs: {
             uploadManager.removeAllJobs();
-            uploadManager.persistJobs(true);
+            break;
+        }
+        case UploadAction.ClearRegionsCache: {
+            KodoHttpClient.clearCache();
             break;
         }
         default: {
@@ -166,7 +166,6 @@ function handleExit() {
         const timer = setInterval(() => {
             if (!uploadManager.running) {
                 clearInterval(timer);
-                uploadManager.persistJobs(true);
                 resolve();
             }
         }, 100);
@@ -213,5 +212,4 @@ function handleCreatedDirectory(bucket: string, directoryKey: string) {
         },
     };
     process.send?.(createdDirectoryReplyMessage);
-    uploadManager.persistJobs();
 }
